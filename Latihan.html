@@ -36,7 +36,7 @@
                 background-color: #343a40;
                 color: white;
             }
-            /* Form container disembunyikan secara default, menggunakan CSS dari kode sebelumnya */
+            /* Form container disembunyikan secara default */
             #formContainer {
                 display: none;
                 box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
@@ -47,7 +47,7 @@
             }
         </style>
     </head>
-       
+
     <body>
         <div class="container">
             <div class="table-container">
@@ -67,7 +67,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="6" class="text-center">Data Transaksi akan muncul di sini...</td>
+                            <td colspan="7" class="text-center">Data Transaksi akan muncul di sini...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -114,12 +114,17 @@
         ></script>
 
         <script>
+            // --- URL API ---
             const readUrl = "https://api.roniprsty.com/transaksi/read.php";
             const createUrl = "https://api.roniprsty.com/transaksi/create.php";
             const productReadUrl = "https://api.roniprsty.com/produk/read.php";
             const UpdateUrl = "https://api.roniprsty.com/transaksi/update.php";
+            const deleteUrl = "https://api.roniprsty.com/transaksi/delete.php"; // Diperlukan untuk delete
 
-            // Fungsi untuk mengambil data transaksi
+            // --- Variabel Global ---
+            let currentEditId = null; // Diperlukan untuk edit/update
+
+            // Fungsi untuk mengambil data transaksi (Diberi nama getProducts sesuai kode Anda)
             async function getProducts() {
                 let tableBody = document.querySelector("#product-table tbody");
 
@@ -131,112 +136,164 @@
                     let transactions = await response.json();
                     tableBody.innerHTML = "";
 
+                    // Asumsi struktur API bisa berupa {data: [...]} atau langsung [...]
                     const dataTransaksi = transactions.data ? transactions.data : Array.isArray(transactions) ? transactions : [];
 
                     if (!Array.isArray(dataTransaksi) || dataTransaksi.length === 0) {
-                        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Tidak ada data transaksi.</td></tr>';
+                        tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Tidak ada data transaksi.</td></tr>';
                         return;
                     }
 
                     dataTransaksi.forEach((tx) => {
                         let row = `
-                        <tr>
-                            <td>${tx.id_transaksi || "-"}</td>
-                            <td>${tx.tanggal_transaksi || "-"}</td>
-                            <td>${tx.id_produk || "-"}</td>
-                            <td>${tx.jumlah || "-"}</td>
-                            <td>${tx.total_harga || "-"}</td>
-                            <td>${tx.status_transaksi || "-"}</td>
-
-                            <td>
-                                <button class="btn btn-warning btn-sm" onclick="editProduct(${tx.id_transaksi})"> Edit</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteProduct(${tx.id_transaksi})"> Delete</button>
-                            </td> 
-
-                        </tr>
-                        `;
+                             <tr>
+                                 <td>${tx.id_transaksi || "-"}</td>
+                                 <td>${tx.tanggal_transaksi || "-"}</td>
+                                 <td>${tx.id_produk || "-"}</td>
+                                 <td>${tx.jumlah || "-"}</td>
+                                 <td>${tx.total_harga || "-"}</td>
+                                 <td>${tx.status_transaksi || "-"}</td>
+                                 <td>
+                                     <button class="btn btn-warning btn-sm" onclick="window.editTransaksi(${tx.id_transaksi})"> Edit</button>
+                                     <button class="btn btn-danger btn-sm" onclick="window.deleteProduk(${tx.id_transaksi})"> Delete</button>
+                                 </td>
+                             </tr>
+                             `;
                         tableBody.innerHTML += row;
                     });
                 } catch (error) {
                     console.error("Gagal mengambil data transaksi:", error);
-                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">Error saat memuat data. Periksa koneksi atau API URL.</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Error saat memuat data. Periksa koneksi atau API URL.</td></tr>';
                 }
                 fetchProductIds();
             }
 
-            //  Tombol Add Data
+            // Handler tombol Add Data
             document.getElementById("addDataBtn").addEventListener("click", function () {
                 document.getElementById("formTitle").textContent = "Tambah Transaksi Baru";
                 document.getElementById("submitBtn").textContent = "Submit";
                 document.getElementById("addTransaksi").reset();
                 document.getElementById("formContainer").style.display = "block";
+
+                // Pastikan semua field aktif saat mode 'Add Data'
+                document.getElementById("tanggal_transaksi").disabled = false;
+                document.getElementById("id_produk").disabled = false;
+                document.getElementById("jumlah").disabled = false;
+                document.getElementById("total_harga").disabled = false;
+                document.getElementById("status_transaksi").disabled = false;
+                currentEditId = null; // Reset ID edit
             });
 
-            // Tombol Cancel
+            // Handler tombol Cancel
             document.getElementById("cancelBtn").addEventListener("click", function () {
                 document.getElementById("formContainer").style.display = "none";
                 document.getElementById("addTransaksi").reset();
+                currentEditId = null; // Reset ID edit
+
+                // Aktifkan kembali field setelah cancel
+                document.getElementById("tanggal_transaksi").disabled = false;
+                document.getElementById("id_produk").disabled = false;
+                document.getElementById("jumlah").disabled = false;
+                document.getElementById("total_harga").disabled = false;
+                document.getElementById("status_transaksi").disabled = false;
             });
 
-            //Submit form
+            // Submit form (Create atau Update)
+
             document.getElementById("addTransaksi").addEventListener("submit", async function (e) {
                 e.preventDefault();
 
-                // Ambil nilai dari form (Menggunakan ID yang benar dan variabel yang konsisten)
-                const tanggal = document.getElementById("tanggal_transaksi").value;
-                const idProduk = document.getElementById("id_produk").value;
-                const jumlah = document.getElementById("jumlah").value;
-                const totalHarga = document.getElementById("total_harga").value;
                 const status = document.getElementById("status_transaksi").value;
-
-                // Objek data yang dikirim ke API (Sesuai dengan kolom Transaksi)
-                const TransaksiData = {
-                    tanggal_transaksi: tanggal,
-                    id_produk: idProduk,
-                    jumlah: jumlah,
-                    total_harga: totalHarga,
-                    status_transaksi: status,
-                };
+                const isUpdating = currentEditId !== null;
+                let response;
 
                 try {
-                    if (id) {
-                        // update produk yang ada
-                        productData.id = id; //tambahkan id produk
-                        let response = await fetch(UpdateUrl, {
+                    if (isUpdating) {
+                        // --- LOGIKA UPDATE (Hanya Status yang diubah) ---
+                        const TransaksiData = {
+                            id_transaksi: currentEditId,
+                            status_transaksi: status,
+                        };
+
+                        console.log("Data yang dikirim untuk update:", TransaksiData);
+
+                        response = await fetch(UpdateUrl, {
                             method: "PUT",
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify(productData),
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(TransaksiData),
                         });
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        alert("Transaksi Berhasil diperbarui");
+
+                        const responseData = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(responseData.message || `HTTP error! Status: ${response.status}`);
+                        }
+
+                        alert("Status Transaksi Berhasil diperbarui");
+                        console.log("Response sukses:", responseData);
                     } else {
-                        //tambah produk baru
-                        let response = await fetch(createUrl, {
+                        // --- LOGIKA CREATE (Semua field digunakan) ---
+                        const tanggal = document.getElementById("tanggal_transaksi").value;
+                        const idProduk = document.getElementById("id_produk").value;
+                        const jumlah = document.getElementById("jumlah").value;
+                        const totalHarga = document.getElementById("total_harga").value;
+
+                        const TransaksiData = {
+                            tanggal_transaksi: tanggal,
+                            id_produk: idProduk,
+                            jumlah: parseInt(jumlah),
+                            total_harga: parseInt(totalHarga),
+                            status_transaksi: status,
+                        };
+
+                        console.log("Data yang dikirim untuk create:", TransaksiData);
+
+                        response = await fetch(createUrl, {
                             method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify(productData),
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(TransaksiData),
                         });
-                        alert("Produk Berhasil ditambahkan");
+
+                        const responseData = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(responseData.message || `HTTP error! Status: ${response.status}`);
+                        }
+
+                        alert("Transaksi Berhasil ditambahkan");
+                        console.log("Response sukses:", responseData);
                     }
 
-                    if (!response.ok) {
-                        const errorResult = await response.json().catch(() => ({ message: `Error ${response.status}` }));
-                        throw new Error(errorResult.message || `HTTP error! Status: ${response.status}`);
-                    }
-
-                    const successResult = await response.json();
-
-                    // Perbarui tampilan
+                    // --- Logika Setelah Sukses Create/Update ---
                     getProducts();
                     document.getElementById("formContainer").style.display = "none";
                     this.reset();
+                    currentEditId = null;
+
+                    // Aktifkan kembali semua field form
+                    document.getElementById("tanggal_transaksi").disabled = false;
+                    document.getElementById("id_produk").disabled = false;
+                    document.getElementById("jumlah").disabled = false;
+                    document.getElementById("total_harga").disabled = false;
+                    document.getElementById("status_transaksi").disabled = false;
                 } catch (error) {
-                    console.error("Gagal Menambahkan Transaksi:", error);
-                    alert(`Gagal menambahkan transaksi: ${error.message || "Cek console log."}`);
+                    console.error(`Gagal ${isUpdating ? "Mengupdate" : "Menambahkan"} Transaksi:`, error);
+
+                    // Tampilkan error yang lebih spesifik
+                    let errorMessage = `Gagal ${isUpdating ? "mengupdate" : "menambahkan"} transaksi: ${error.message}`;
+
+                    // Jika ada response, coba dapatkan detail error dari body response
+                    if (response) {
+                        try {
+                            const errorResult = await response.json();
+                            errorMessage = errorResult.message || errorMessage;
+                        } catch (jsonError) {
+                            // Jika gagal parse JSON, gunakan status text
+                            errorMessage = `Error ${response.status}: ${response.statusText}`;
+                        }
+                    }
+
+                    alert(errorMessage);
                 }
             });
 
@@ -244,11 +301,9 @@
             async function fetchProductIds() {
                 const selectElement = document.getElementById("id_produk");
                 selectElement.innerHTML = '<option value="">-- Loading Produk... --</option>'; // Pesan loading
-
                 try {
                     let response = await fetch(productReadUrl);
 
-                    // Memastikan response OK dan mendapatkan data JSON
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
                     let products = await response.json();
@@ -277,41 +332,75 @@
                 }
             }
 
-            // Fungsi untuk mengedit produk
-            async function editTransaksi(id) {
+            async function editTransaksi(id_transaksi) {
+                console.log("Edit transaksi dengan ID:", id_transaksi);
+
+                currentEditId = id_transaksi;
+
                 try {
-                    let response = await fetch(UpdateUrl);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    // Gunakan read.php dan filter di client side
+                    let response = await fetch("https://api.roniprsty.com/transaksi/read.php");
 
-                    let product = await response.json();
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
 
-                    // // Periksa apakah data produk diterima dengan benar
-                    // if (!product || !product.nama_produk) {
-                    //     throw new Error("Data produk tidak ditemukan atau struktur data salah");
-                    // }
+                    let allTransactions = await response.json();
 
-                    // Isi form dengan data produk
-                    document.getElementById("tanggal_transaksi").value = product.tanggal_transaksi;
-                    const idProduk = document.getElementById("id_produk").value;
-                    const jumlah = document.getElementById("jumlah").value;
-                    const totalHarga = document.getElementById("total_harga").value;
-                    const status = document.getElementById("status_transaksi").value;
+                    // Handle different API response structures
+                    const transactions = allTransactions.data ? allTransactions.data : Array.isArray(allTransactions) ? allTransactions : [];
 
-                    // Ubah judul form dan tombol submit untuk mode edit
-                    document.getElementById("formTitle").textContent = "Update Data Transaksi";
-                    document.getElementById("submitBtn").textContent = "Update";
+                    console.log("All transactions:", transactions);
 
-                    // Simpan ID Produk ke dalam dataset form
-                    document.getElementById("addTransaksi").dataset.id = product.id;
+                    // Cari transaksi dengan ID yang sesuai
+                    const txData = transactions.find((tx) => tx.id_transaksi == id_transaksi);
 
-                    // Tampilkan form
+                    if (!txData) {
+                        throw new Error(`Transaksi dengan ID ${id_transaksi} tidak ditemukan`);
+                    }
+
+                    console.log("Data transaksi ditemukan:", txData);
+
+                    // Isi form dengan data yang ditemukan
+                    document.getElementById("tanggal_transaksi").value = txData.tanggal_transaksi || "";
+                    document.getElementById("id_produk").value = txData.id_produk || "";
+                    document.getElementById("jumlah").value = txData.jumlah || "";
+                    document.getElementById("total_harga").value = txData.total_harga || "";
+                    document.getElementById("status_transaksi").value = txData.status_transaksi || "Pending";
+
+                    document.getElementById("formTitle").textContent = "Update Status Transaksi";
+                    document.getElementById("submitBtn").textContent = "Update Status";
+
+                    // Disable field kecuali status
+                    document.getElementById("tanggal_transaksi").disabled = true;
+                    document.getElementById("id_produk").disabled = true;
+                    document.getElementById("jumlah").disabled = true;
+                    document.getElementById("total_harga").disabled = true;
+                    document.getElementById("status_transaksi").disabled = false;
+
                     document.getElementById("formContainer").style.display = "block";
                 } catch (error) {
                     console.error("Gagal mengambil data Transaksi:", error);
-                    alert("Terjadi kesalahan saat mengambil data Transaksi, silakan coba lagi.");
+                    alert(`Error: ${error.message}`);
+                    currentEditId = null;
                 }
             }
 
+            // fungsi untuk delete (Dibuat global agar bisa diakses dari onclick)
+            // Test API delete manual di console
+            async function deleteProduk() {
+                try {
+                    const response = await fetch("https://api.roniprsty.com/transaksi/delete.php?id_transaksi=1", {
+                        method: "DELETE",
+                    });
+                    console.log("Test Delete Response:", response);
+                    const result = await response.text();
+                    console.log("Test Delete Result:", result);
+                } catch (error) {
+                    console.error("Test Delete Error:", error);
+                }
+            }
+            testDeleteAPI();
             // Panggil fungsi untuk memuat data transaksi saat halaman dimuat
             getProducts();
         </script>
