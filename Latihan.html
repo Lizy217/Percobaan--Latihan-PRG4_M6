@@ -36,6 +36,17 @@
                 background-color: #343a40;
                 color: white;
             }
+
+            .status-selesai {
+                color: #198754;
+                font-weight: bold;
+            }
+
+            .status-pending {
+                color: #ffc107;
+                font-weight: bold;
+            }
+
             /* Form container disembunyikan secara default */
             #formContainer {
                 display: none;
@@ -44,6 +55,12 @@
                 background-color: white;
                 padding: 20px;
                 margin-top: 20px;
+            }
+
+            .loading {
+                text-align: center;
+                padding: 20px;
+                color: #6c757d;
             }
         </style>
     </head>
@@ -67,7 +84,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="7" class="text-center">Data Transaksi akan muncul di sini...</td>
+                            <td colspan="7" class="loading">Memuat data transaksi...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -84,16 +101,16 @@
                 <div class="mb-3">
                     <label for="id_produk" class="form-label">ID Produk</label>
                     <select class="form-control" id="id_produk" required>
-                        <option value="">-- Pilih ID Produk --</option>
+                        <option value="">-- Loading Produk... --</option>
                     </select>
                 </div>
                 <div class="mb-3">
                     <label for="jumlah" class="form-label">Jumlah</label>
-                    <input type="number" class="form-control" id="jumlah" required />
+                    <input type="number" class="form-control" id="jumlah" required min="1" />
                 </div>
                 <div class="mb-3">
                     <label for="total_harga" class="form-label">Total Harga</label>
-                    <input type="number" class="form-control" id="total_harga" required />
+                    <input type="number" class="form-control" id="total_harga" required min="0" />
                 </div>
                 <div class="mb-3">
                     <label for="status_transaksi" class="form-label">Status</label>
@@ -118,15 +135,16 @@
             const readUrl = "https://api.roniprsty.com/transaksi/read.php";
             const createUrl = "https://api.roniprsty.com/transaksi/create.php";
             const productReadUrl = "https://api.roniprsty.com/produk/read.php";
-            const UpdateUrl = "https://api.roniprsty.com/transaksi/update.php";
-            const deleteUrl = "https://api.roniprsty.com/transaksi/delete.php"; // Diperlukan untuk delete
+            const updateUrl = "https://api.roniprsty.com/transaksi/update.php";
+            const deleteUrl = "https://api.roniprsty.com/transaksi/delete.php";
 
             // --- Variabel Global ---
-            let currentEditId = null; // Diperlukan untuk edit/update
+            let currentEditId = null;
 
-            // Fungsi untuk mengambil data transaksi (Diberi nama getProducts sesuai kode Anda)
+            // Fungsi untuk mengambil data transaksi
             async function getProducts() {
                 let tableBody = document.querySelector("#product-table tbody");
+                tableBody.innerHTML = '<tr><td colspan="7" class="loading">Memuat data transaksi...</td></tr>';
 
                 try {
                     let response = await fetch(readUrl);
@@ -145,17 +163,18 @@
                     }
 
                     dataTransaksi.forEach((tx) => {
+                        const statusClass = tx.status_transaksi === "Selesai" ? "status-selesai" : "status-pending";
                         let row = `
                              <tr>
                                  <td>${tx.id_transaksi || "-"}</td>
                                  <td>${tx.tanggal_transaksi || "-"}</td>
                                  <td>${tx.id_produk || "-"}</td>
                                  <td>${tx.jumlah || "-"}</td>
-                                 <td>${tx.total_harga || "-"}</td>
-                                 <td>${tx.status_transaksi || "-"}</td>
+                                 <td>${tx.total_harga ? "Rp " + parseInt(tx.total_harga).toLocaleString("id-ID") : "-"}</td>
+                                 <td class="${statusClass}">${tx.status_transaksi || "-"}</td>
                                  <td>
-                                     <button class="btn btn-warning btn-sm" onclick="window.editTransaksi(${tx.id_transaksi})"> Edit</button>
-                                     <button class="btn btn-danger btn-sm" onclick="window.deleteProduk(${tx.id_transaksi})"> Delete</button>
+                                     <button class="btn btn-warning btn-sm" onclick="editTransaksi(${tx.id_transaksi})"> Edit</button>
+                                     <button class="btn btn-danger btn-sm" onclick="deleteTransaksi(${tx.id_transaksi})"> Delete</button>
                                  </td>
                              </tr>
                              `;
@@ -165,7 +184,6 @@
                     console.error("Gagal mengambil data transaksi:", error);
                     tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Error saat memuat data. Periksa koneksi atau API URL.</td></tr>';
                 }
-                fetchProductIds();
             }
 
             // Handler tombol Add Data
@@ -182,6 +200,9 @@
                 document.getElementById("total_harga").disabled = false;
                 document.getElementById("status_transaksi").disabled = false;
                 currentEditId = null; // Reset ID edit
+
+                // Muat daftar produk
+                fetchProductIds();
             });
 
             // Handler tombol Cancel
@@ -199,7 +220,6 @@
             });
 
             // Submit form (Create atau Update)
-
             document.getElementById("addTransaksi").addEventListener("submit", async function (e) {
                 e.preventDefault();
 
@@ -217,7 +237,7 @@
 
                         console.log("Data yang dikirim untuk update:", TransaksiData);
 
-                        response = await fetch(UpdateUrl, {
+                        response = await fetch(updateUrl, {
                             method: "PUT",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(TransaksiData),
@@ -297,7 +317,7 @@
                 }
             });
 
-            // Fungsi BARU: Mengambil daftar ID Produk dan mengisinya ke Select
+            // Fungsi: Mengambil daftar ID Produk dan mengisinya ke Select
             async function fetchProductIds() {
                 const selectElement = document.getElementById("id_produk");
                 selectElement.innerHTML = '<option value="">-- Loading Produk... --</option>'; // Pesan loading
@@ -332,6 +352,7 @@
                 }
             }
 
+            // Fungsi untuk mengedit transaksi
             async function editTransaksi(id_transaksi) {
                 console.log("Edit transaksi dengan ID:", id_transaksi);
 
@@ -339,7 +360,7 @@
 
                 try {
                     // Gunakan read.php dan filter di client side
-                    let response = await fetch("https://api.roniprsty.com/transaksi/read.php");
+                    let response = await fetch(readUrl);
 
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -385,24 +406,29 @@
                     currentEditId = null;
                 }
             }
+            // Fungsi untuk menghapus transaksi
+            async function deleteTransaksi(id_transaksi) {
+                if (confirm("Apakah Anda yakin ingin menghapus produk ini?")) {
+                    try {
+                        let response = await fetch(`${deleteUrl}?id=${id_transaksi}`, {
+                            method: "DELETE",
+                        });
 
-            // fungsi untuk delete (Dibuat global agar bisa diakses dari onclick)
-            // Test API delete manual di console
-            async function deleteProduk() {
-                try {
-                    const response = await fetch("https://api.roniprsty.com/transaksi/delete.php?id_transaksi=1", {
-                        method: "DELETE",
-                    });
-                    console.log("Test Delete Response:", response);
-                    const result = await response.text();
-                    console.log("Test Delete Result:", result);
-                } catch (error) {
-                    console.error("Test Delete Error:", error);
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                        alert("Produk berhasil dihapus!");
+                        getProducts(); // Muat ulang data produk
+                    } catch (error) {
+                        console.error("Gagal menghapus produk:", error);
+                        alert("Gagal menghapus produk.");
+                    }
                 }
             }
-            testDeleteAPI();
+
             // Panggil fungsi untuk memuat data transaksi saat halaman dimuat
-            getProducts();
+            document.addEventListener("DOMContentLoaded", function () {
+                getProducts();
+            });
         </script>
     </body>
 </html>
